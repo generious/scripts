@@ -1,0 +1,20 @@
+$servernamelist = Get-Content -Path "C:\temp\servers.txt"
+
+foreach ($vmname in $servernamelist){
+
+
+    Try {
+
+        Get-CDDrive -VM $vmname | Remove-CDDrive -Confirm:$false -ErrorAction Stop
+
+        Write-Output "removed CD-Drive from Server:  $vmname"
+
+    }
+
+    Catch {
+
+        Write-Output "failed to remove CD-Drive from server: $vmname"
+
+    } 
+
+}
