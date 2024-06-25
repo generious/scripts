@@ -1,0 +1,97 @@
+#Validation check DVS vs VSS for differences
+
+                $standardSwitchName = "vSwitch2"
+
+    $dvSwitchName = Read-Host "Enter the dvSwitch Name"
+
+    $cluster = Read-Host "Enter the cluster name"
+
+    $vCenter = Read-Host "Enter the vCenter Name"
+
+ 
+
+                #Connect to vCenter
+
+    connect-viserver -server $vCenter
+
+ 
+
+    $dvsPGs = Get-VirtualSwitch -Name $dvSwitchName | Get-VirtualPortGroup | Select Name, @{N="VLANId";E={$_.Extensiondata.Config.DefaultPortCOnfig.Vlan.VlanId}}, NumPorts
+
+    #Get all ESXi hosts in a cluster
+
+    $vmhosts = get-cluster -Name $cluster | get-vmhost
+
+ 
+
+    #Loop ESXi hosts
+
+    foreach ($vmhost in $vmhosts)
+
+    {
+
+        #Write-Host "Host: "$vmhost.Name "VSS: "$standardSwitchName
+
+ 
+
+        #Get VSSPortgroups for this host
+
+        $VSSPortGroups = $vmhost | Get-VirtualSwitch -Name $standardSwitchName | Get-VirtualPortGroup
+
+            #Sort based upon name of VSS
+
+            foreach ($dvsPG in $dvsPGs)
+
+            {
+
+                if ($dvsPg.VLANId -is [int] )
+
+                {
+
+                #Write "VSSPortGroup: " $VSSPortGroup.Name
+
+                #Loop on DVS
+
+                $match = $FALSE
+
+                foreach ($VSSPortGroup in $VSSPortGroups)
+
+                {
+
+                    if ($dvsPG.Name -eq $VSSPortGroup.Name)
+
+                    {
+
+                        #Write-Host "Found a Match vss: "$VSSPortGroup.Name" to DVS: "$dvsPG.Name" Host: " $vmhost.name
+
+                        $match = $TRUE
+
+                        $missing = $dvsPG.Name
+
+                   
+
+                    }
+
+ 
+
+                }
+
+                if ($match -eq $FALSE)
+
+                {
+
+                    Write-Host "Did not find a match for DVS: "$missing " on "$vmhost.name
+
+ 
+
+                }
+
+ 
+
+            }
+
+            }
+
+ 
+
+    }
