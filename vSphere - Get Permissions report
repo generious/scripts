@@ -1,0 +1,32 @@
+#Enter your vCenter Host below
+$vcenter = "xxx.xxx-xxx.co.xxx"
+ 
+#Load the VMware Powershell snapin if the script is being executed in PowerShell
+Add-PSSnapin VMware.VimAutomation.Core -ErrorAction 'SilentlyContinue'
+ 
+#Connect to the vCenter server defined above. Ignore certificate errors
+Connect-VIServer $vcenter -wa 0
+ 
+$report = foreach($vc in $global:DefaultVIServers){
+ 
+    $si = Get-View ServiceInstance -Server $vc
+ 
+    $authMgr = Get-View -Id $si.Content.AuthorizationManager-Server $vc
+ 
+    $authMgr.RetrieveAllPermissions() |
+ 
+    Select @{N='vCenter';E={$vc.Name}},
+ 
+        @{N='Entity';E={Get-View -Id $_.Entity -Property Name -Server $vc | select -ExpandProperty Name}},
+ 
+        @{N='Entity Type';E={$_.Entity.Type}},
+ 
+        Principal,
+ 
+        Propagate,
+ 
+        @{N='Role';E={$perm = $_; ($authMgr.RoleList | where{$_.RoleId -eq $perm.RoleId}).Info.Label}}
+ 
+}
+ 
+$report | Export-Csv permissions.csv -NoTypeInformation -UseCulture
