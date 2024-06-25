@@ -1,0 +1,28 @@
+$strHostsClusterName = Read-Host "Please enter the Cluster name"  
+
+
+Get-View -ViewType HostSystem -Property Name, Runtime.HealthSystemRuntime.SystemHealthInfo.NumericSensorInfo -SearchRoot (Get-View -ViewType ClusterComputeResource -Property Name -Filter @{"Name" = "^$([RegEx]::escape($strHostsClusterName))$"}).MoRef | %{  
+    $arrNumericSensorInfo = @($_.Runtime.HealthSystemRuntime.SystemHealthInfo.NumericSensorInfo)  
+    # HostNumericSensorInfo for BIOS, iLO, array controller  
+    $nsiBIOS = $arrNumericSensorInfo | ? {$_.Name -like "*System BIOS*"}  
+    $nsiArrayCtrlr = $arrNumericSensorInfo | ? {$_.Name -like "HP Smart Array Controller*"}  
+    $nsiILO = $arrNumericSensorInfo | ? {$_.Name -like "Hewlett-Packard BMC Firmware*"}  
+
+    $esxName = $_.Name 
+    $esxcli = Get-EsxCli -VMHost $_.Name 
+    $esxcli.network.nic.list() | %{ 
+      $esxcli.network.nic.get($_.Name) | %{
+          $props = [ordered]@{
+              VMHost = $esxName  
+              "SystemBIOS" = $nsiBIOS.name  
+              "HPSmartArray" = $nsiArrayCtrlr.Name  
+              "iLOFirmware" = $nsiILO.Name  
+              "nx_nic device" = $_.Name  
+              "nx_nic driver" = $_.DriverInfo.Driver 
+              "nx_nic driver version" = $_.DriverInfo.Version 
+              "nx_nic firmware version" = $_.DriverInfo.FirmwareVersion 
+          } ## end new-object  
+          New-Object PSObject -Property $props
+      } 
+    } 
+} | Export-Csv 'D:\scripts\Driver & Firmware Checker\Firmware-Report.csv'  ## end Foreach-Object
