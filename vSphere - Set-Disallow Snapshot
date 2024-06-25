@@ -1,0 +1,29 @@
+#Sets all of the hosts to allow snapshots to be force mounted automatically upon a rescan
+$ClX = Read-Host "Enter the cluster name"
+$hosts = get-cluster $CLX |get-vmhost
+foreach ($esx in $hosts)
+{
+$disallowsnapshot = $esx | Get-AdvancedSetting -Name LVM.DisallowSnapshotLUN
+if ($disallowsnapshot.value -eq 1)
+{
+$snapboolean = "enabled"
+}
+else
+{
+$snapboolean = "disabled"
+}
+write-host
+write-host "LVM.DisallowSnapshotLun is currently set to" $snapboolean "on ESXi host" $esx.Name
+if ($disallowsnapshot.value -ne 0)
+{
+write-host "Disabling LVM.DisallowSnapshotLun..."
+$disallowsnapshot |Set-AdvancedSetting -Value 0 -Confirm:$false |out-null
+write-host "LVM.DisallowSnapshotLun is now disabled."
+}
+else
+{
+write-host "Setting is correct. No need to change."
+}
+}
+write-host "----------------------------------------------------------"
+write-host
