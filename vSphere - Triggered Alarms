@@ -1,0 +1,67 @@
+Here to a script to gather all the triggered Alarms in the vCenters 
+
+You will need to generate the credentials file before this can be used 
+
+ 
+
+#Run Powershell as the user you wish to run the script as
+#Run the following line from Powershell (changing the output path if necessary) and input credentials when prompted
+#username can be anything as only password is saved
+
+(get-credential).Password | ConvertFrom-Securestring | sc "E:\Scripts\VCTriggeredAlarms\O.cred"
+
+$workingdir = split-path ($MyInvocation.MyCommand.Path)
+$smtpServer = "outlook.company.local"
+$mailfrom = "wScript@companyname.com"
+$mailto = "dlhostingservices@companyname.com"
+#$mailto = "xxxxxx@companyname.com"
+$mailsubject = "Triggered vCenter Alarms"
+$mailbody = "Please see attached current triggered vCenter alarms. Report ran from $env:computername"
+$filenameprefix = "VCTriggeredAlarms"
+$vcenters = "vcs02.local","vcs03.local"
+
+Add-PSSnapin VMware.vimautomation.core
+
+$tpwd = gc "$workingdir\T.cred" | ConvertTo-SecureString
+$tcreds = New-Object System.Management.Automation.PsCredential "worldpaytd\svc_vcs_powercli_ro", $tpwd
+$opwd = gc "$workingdir\O.cred" | ConvertTo-SecureString
+$ocreds = New-Object System.Management.Automation.PsCredential "worldpaypp\svc_vcs_powercli_ro", $opwd
+$ppwd = gc "$workingdir\P.cred" | ConvertTo-SecureString
+$pcreds = New-Object System.Management.Automation.PsCredential "worldpay\svc_vcs_powercli_ro", $ppwd
+
+$report = @()
+Foreach ($vc in $vcenters) {
+ If ($vc -like "*.local") {Connect-viserver $vc -Credential $tcreds}
+ If ($vc -like "*.local") {Connect-viserver $vc -Credential $ocreds}
+ If ($vc -like "*.local") {Connect-viserver $vc -Credential $pcreds}
+ $rootfolder = get-folder -server $vc "Datacenters"
+ $alarms = $rootfolder.ExtensionData.TriggeredAlarmState | ? {(get-view -server $vc $_.entity).gettype().name -ne "VirtualMachine"}
+ Foreach ($a in $alarms) {
+  $record = "" | Select vCenter, EntityType, Alarm, Entity, Status, Time, Acknowledged, AckBy, AckTime
+  $record.Alarm = (Get-View -server $vc $a.alarm).Info.Name
+  $record.Entity = (Get-View -server $vc $a.Entity).Name
+  $record.EntityType = (Get-View -server $vc $a.Entity).GetType().Name	
+  $record.Status = $a.OverallStatus
+  $record.Time = $a.Time
+  $record.Acknowledged = $a.Acknowledged
+  $record.AckBy = $a.AcknowledgedByUser
+  $record.AckTime = $a.AcknowledgedTime
+  $record.vCenter = $vc
+  $report += $record
+ }
+ Disconnect-viserver $vc -confirm:$false
+}
+$today = get-date -format yyyyMMdd
+del ("$workingdir\$filenameprefix" + "_*")
+$file = "$workingdir\$filenameprefix" + "_$today.csv"
+$report | export-csv -nti $file
+$att = new-object Net.Mail.Attachment($file)
+$msg = new-object Net.Mail.MailMessage
+$smtp = new-object Net.Mail.SmtpClient($smtpServer)
+$msg.From = $mailfrom
+$msg.To.Add($mailto)
+$msg.Subject = $mailsubject
+$msg.Body = $mailbody
+$msg.Attachments.Add($att)
+$smtp.Send($msg)
+$att.Dispose()
