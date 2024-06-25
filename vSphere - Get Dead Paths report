@@ -1,0 +1,103 @@
+New-Item -ItemType Directory -Path C:\Script\VMware_Deadpaths\Old\".\$((Get-Date).ToString('yyyy-MM-dd'))"
+Start-Sleep -s 5 
+Move-Item C:\Script\VMware_Deadpaths\*.csv  C:\Script\VMware_Deadpaths\Old\".\$((Get-Date).ToString('yyyy-MM-dd'))"
+Start-Sleep -s 5 
+  <#
+      .SYNOPSIS
+      It shows the HBA's with it's Paths (Active,Dead,Standby)
+      .DESCRIPTION
+      You can check a single Host, a Cluster or even a DataCenter to show it's HBA's and their paths.
+      It's tested with Cisco UCS Blades including VIC Cards and QLogic FC HBA's in Dell Hosts.
+      Check the Driver Name (and edit in Line 75) in case of trouble.
+      .EXAMPLE
+ 
+      Get-FCPaths -vHost myHost-01
+ 
+      Get-FCPaths -vHost myHost-*
+ 
+      Get-FCPaths -Cluster myCluster
+ 
+      Get-FCPaths -DataCenter myDataCenter
+ 
+     .EXAMPLE Output
+ 
+      VMHost  Device Active Standby Dead
+      ------  ------ ------ ------- ----
+      Host-01 vmhba1      0       0    4
+      Host-01 vmhba2      4       0    0
+ 
+   #>
+   
+   #Credential file to use
+   $ppwd = gc "C:\Script\CredFiles\vcvSphere.cred" | ConvertTo-SecureString
+   $pcreds = New-Object System.Management.Automation.PsCredential "svcvSphere", $ppwd
+   $Cluster = "xx","xxxx","xxx"
+   $VC = "xx"
+ 
+   Get-Module vmware* -ListAvailable | Import-Module
+   Connect-viserver $VC -Credential $pcreds
+    
+    
+    $vobject = (Get-Cluster $Cluster| Get-VMHost)  | Sort-Object -Property Name            
+ 
+ 
+    
+  foreach($vmhost in ($vobject)){
+    
+    $esx = Get-VMHost -Name $vmhost
+    $report = @()
+    # fc or fnic for UCS VIC-Cards
+    foreach($hba in ($esx.ExtensionData.Config.StorageDevice.HostBusAdapter | where{$_.Driver -match 'qlnativefc'})){
+      $paths = @()
+      foreach($lun in $esx.ExtensionData.Config.StorageDevice.MultipathInfo.Lun){
+        $paths += $lun.Path | where{$_.Adapter -match "$($hba.Device)"}
+      }
+      $groups = $paths | Group-Object -Property PathState
+      $report += $hba | Select @{N='VMHost';E={$esx.Name}},Device,
+      @{N='Active';E={($groups | where{$_.Name -eq 'active'}).Count}},
+      @{N='Standby';E={($groups | where{$_.Name -eq 'standby'}).Count}},
+      @{N='Dead';E={($groups | where{$_.Name -eq 'dead'}).Count}}
+    }
+    Write-Host "Cluster: "$vmhost.Parent
+    $report | Export-Csv C:\Script\VMware_Deadpaths\Dead_Paths.csv -Append -NoTypeInformation
+    $report | ft -AutoSize
+    
+  } 
+  
+  Disconnect-viserver $VC -confirm:$false
+  
+ 
+###############################################################################
+ 
+###########Define Variables########
+ 
+$fromaddress = "xx@xxxx.xx.xxx"
+$toaddress = "xx.xx@xx.xx.xx,xx.xx@xx.xx.xx,xx@xx.xx.xx"
+#$toaddress = "xx.xxx@xx.xx.xx"
+$d = Get-Date
+$Date = $d.GetDateTimeFormats()[10]
+$Subject = "Dead Path Report $Date"
+$Body = "Please find attached todays Dead Paths Report."
+$attachment = "C:\Script\VMware_Deadpaths\Dead_Paths.csv"
+$smtpserver = "xxxxx"
+ 
+####################################
+ 
+$message = new-object System.Net.Mail.MailMessage
+$message.From = $fromaddress
+$message.To.Add($toaddress)
+$message.IsBodyHtml = $False
+$message.Subject = $Subject
+$message.body = $Body
+$attach = new-object Net.Mail.Attachment($attachment)
+$message.Attachments.Add($attach)
+$smtp = new-object Net.Mail.SmtpClient($smtpserver)
+$smtp.Send($message)
+ 
+#################################################################################
+ 
+#Lets wait before cleaning up
+#start-sleep -s 15
+ 
+#Remove the old dead path file
+#Del Dead_Paths.csv
