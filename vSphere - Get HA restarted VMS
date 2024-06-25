@@ -1,0 +1,31 @@
+Connect-viserver xxxxx
+$Date=Get-Date
+$HAVMrestartold=1
+ 
+Get-VIEvent -maxsamples 100000 -Start ($Date).AddDays(-$HAVMrestartold) -type warning | Where {$_.FullFormattedMessage -match "HA restarted"} |select CreatedTime,FullFormattedMessage |sort CreatedTime -Descending | Export-Csv -Path .\HA.csv -NoTypeInformation
+ 
+###########Define Variables########
+ 
+$fromaddress = "xx@xxx.xx.xx"
+$toaddress = "xx.xx@xxx.xx.xx,xx.xx@xxx.co.uk,xxxx@investecwin.co.uk"
+$d = Get-Date
+$Date = $d.GetDateTimeFormats()[10]
+$Subject = "HA Event Report $Date"
+$Body = "HA Event Report"
+$attachment = "C:\Script\Get-RestartedVMs\HA.csv"
+$smtpserver = "10.91.210.109"
+ 
+####################################
+ 
+$message = new-object System.Net.Mail.MailMessage
+$message.From = $fromaddress
+$message.To.Add($toaddress)
+$message.IsBodyHtml = $False
+$message.Subject = $Subject
+$message.body = $Body
+$attach = new-object Net.Mail.Attachment($attachment)
+$message.Attachments.Add($attach)
+$smtp = new-object Net.Mail.SmtpClient($smtpserver)
+$smtp.Send($message)
+ 
+#################################################################################
