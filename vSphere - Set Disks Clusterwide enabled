@@ -1,0 +1,34 @@
+esxcli storage core device setconfig -d naa.6d09466032a1e3002206c2bd135d5cf2 --shared-clusterwide=true
+ 
+$esxcli.storage.core.device.setconfig($false, ($RDMDisk.ScsiCanonicalName), $false)
+ 
+ 
+#Target Cluster - Main IWI Cluster
+$ClusterName = "xxx"
+ 
+# Create a connection object to all hosts in the Target Cluster
+$TargetCluster = Get-Cluster -Name $ClusterName | Get-VMHost
+ 
+#Prompt for the naa details of the new disk 
+$NAA = Read-Host "Enter the NAA disk id - example naa.60030d90b03f4107dd5dcd02ab73c5c5 "
+ 
+# Find the ScsiCanonicalName for all RDM Disks attached to VMs in the Target Cluster
+#$RDMDisks = Get-VM  | Get-HardDisk -DiskType "RawPhysical","RawVirtual" | Select ScsiCanonicalName
+#foreach ($rdm2 in $RDMDisks){
+#$rdm2
+#}
+ 
+# Retrieve and EsxCli instance for each connection
+#foreach($RDMDisk in $RDMDisks) {
+#]
+ 
+foreach($hst in $TargetCluster) {
+# And for each RDM Disk
+$esxcli=Get-EsxCli -VMHost $Hst
+# Set the configuration to "PereniallyReserved".
+# setconfig method: void setconfig(boolean detached, string device, boolean perenniallyreserved)
+$esxcli.storage.core.device.setconfig($false, ($RDMDisk.ScsiCanonicalName), $false)
+}
+ 
+#Disconnect the connection objects created for the Target Cluster
+Disconnect-VIServer * -Confirm:$false | Out-Null
