@@ -1,0 +1,2 @@
+$Cluster = Read-host "Enter the cluster name"
+Get-cluster $Cluster | Get-VM | Get-HardDisk -DiskType "RawPhysical","RawVirtual" | Select Parent,Name,CapacityKB,Filename,ScsiCanonicalName,DeviceName |Export-csv $Cluster-RDMs.csv
