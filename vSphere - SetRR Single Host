@@ -1,0 +1,2 @@
+$host= Read-host "Enter the host name"
+Get-VMhost $host | Get-ScsiLun -CanonicalName "naa.*" -LunType disk | Set-ScsiLun -MultipathPolicy "RoundRobin"
