@@ -1,0 +1,4 @@
+$vms = get-cluster | get-vm
+foreach($vm in $vms){
+set-vm $vm -name $vm.name.ToLower() -confirm:$false -RunAsync
+}
