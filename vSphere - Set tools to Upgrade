@@ -1,0 +1,6 @@
+# VMware Tools Automatic Upgrade on PowerCycle
+ 
+$vmConfigSpec = New-Object VMware.Vim.VirtualMachineConfigSpec
+$vmConfigSpec.Tools = New-Object VMware.Vim.ToolsConfigInfo
+$vmConfigSpec.Tools.ToolsUpgradePolicy = "UpgradeAtPowerCycle"
+Get-VM | Where {$_.ExtensionData.Config.Tools.ToolsUpgradePolicy -like "manual"} | ForEach { $_.ExtensionData.ReconfigVM_task($vmConfigSpec) }
