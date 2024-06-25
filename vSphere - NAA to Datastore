@@ -1,0 +1,2 @@
+$naa= Read-host "Enter the NAA details"
+get-datastore | ? {$_.ExtensionData.Info.Vmfs.Extent.Diskname -match $naa}
