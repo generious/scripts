@@ -1,0 +1,17 @@
+#Get all ESXi hosts
+$hosts = Get-VMHost
+$Ntpservers = "ntp01.domain.com","ntp02.net.domain.com"
+$ntp = Get-VmHostService -VMhost $hosts | Where {$_.Key -eq 'ntpd'}
+
+#Update Syslog configuration
+$hosts | Set-VMHostAdvancedConfiguration Syslog.global.logHost -Value "10.1.1.220,10.21.23.26,10.21.23.30"
+$hosts | Set-VMHostAdvancedConfiguration Syslog.global.logDirUnique -Value True
+$hosts | Set-VMHostAdvancedConfiguration Syslog.global.logDir -Value "[] /scratch/log"
+
+#Update the syslog settings on all the servers in th vCenter
+$hosts | Add-VMhostNtpServer -Ntpserver "ntp01.domain.com","ntp02.net.domain.com"
+$hosts | Add-VMhostNtpServer -Ntpserver $Ntpservers
+
+#Make sure the service is set correct
+Set-VMHostService -HostService $ntp -policy "automatic"
+Restart-Vmhostservice $ntp -Confirm:$false
