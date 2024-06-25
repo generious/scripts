@@ -1,0 +1,21 @@
+$strvc=Read-Host "Enter vcenter name"
+Add-PSSnapin vmware.vimautomation.core
+Add-PSSnapin vmware.deployautomation
+$strmac=Read-Host "Enter MAC Address"
+$strmac="*"+$strmac
+
+
+Connect-VIServer $strvc
+
+$strvmhost=(Get-VMHost).Name
+
+
+$intc=$strvmhost.Count
+
+for ($a=0; $a -le ($intc-1);$a++)
+    {
+
+    Get-VMHostNetworkAdapter -VMHost $strvmhost[$a]|where {$_.Mac -like $strmac}|ft vmhost,mac
+
+
+    }
