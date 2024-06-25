@@ -1,0 +1,188 @@
+#Record working directory where this script is located
+$workingdir = split-path ($MyInvocation.MyCommand.Path)
+
+#vCenters
+$VIServer = "vcp101.com","vcp102.com"
+
+#Password credentials
+$ppwd = gc "D:\scripts\Creds\svc.cred" | ConvertTo-SecureString
+$pcreds = New-Object System.Management.Automation.PsCredential "srv_edchpp01", $ppwd
+
+#Value for alarms
+$MailtoAddresses= "Windowssupport@companyname.com"
+
+#Connect to the vCenter Server
+Connect-VIServer -Server $VIServer -Protocol https -Credential $pcreds -WarningAction SilentlyContinue | Out-Null
+
+#Set session details
+#$sessionManager = Get-View -Id $global:DefaultVIServer.ExtensionData.Content.SessionManager
+#$sessionManager.SetLocale(En-GB)
+
+#----These Alarms will send a single email message and not repeat ----
+
+#Start Low  priority alarms
+$LowPriorityAlarms="Certificate Status",`
+"Cis License Health Alarm",`
+"Content Library Service Health Alarm",`
+"Datastore is in multiple datacenters",`
+"License capacity monitoring",`
+"License inventory monitoring",`
+"License user threshold monitoring",`
+"Message Bus Config Health Alarm",`
+"The host license edition is not compatible with the vCenter Server license edition",`
+"Transfer Service Health Alarm",`
+"Virtual Machine network adapter reservation status",`
+"vSphere APIs for IO Filtering (VAIO) Filter Management Operations",`
+"vSphere Distributed Switch MTU matched status",`
+"vSphere Distributed Switch MTU supported status",`
+"vSphere Distributed Switch teaming matched status",`
+"vSphere HA virtual machine monitoring action",`
+"vSphere vCenter Host Certificate Management Mode"
+#End
+
+#----These Medium Alarms will repeat every 24 hours----
+$MediumPriorityAlarms=`
+"Cannot find vSphere HA master agent",`
+"Datastore compliance alarm",`
+"ESX Agent Manager Health Alarm",`
+"ESXi Host Certificate Status",`
+"Exit standby error",`
+"Expired host license",`
+"Expired host time-limited license",`
+"Health status changed alarm",`
+"Host Baseboard Management Controller status",`
+"Host battery status",`
+"Host CPU usage",`
+"Host hardware fan status",`
+"Host hardware power status",`
+"Host hardware system board status",`
+"Host hardware temperature status",`
+"Host hardware voltage",`
+"Host IPMI System Event Log status",`
+"Host memory status",`
+"Host memory usage",`
+"Host processor status",`
+"Host storage status",`
+"HPE BladeSystem Power Alarm",`
+"HPE BladeSystem Thermal Alarm",`
+"HPE Server SNMP Trap",`
+"HPE Server WBEM Indication",`
+"Identity Health Alarm",`
+"Insufficient vSphere HA failover resources",`
+"Inventory Health Alarm",`
+"License error",`
+"vPerformance Charts Service Health Alarm",`
+"RBD Health Alarm",`
+"Service Control Agent Health Alarm",`
+"Status of other host hardware objects",`
+"Storage DRS is not supported on a host",`
+"Storage DRS recommendation",`
+"Unmanaged workload detected on SIOC-enabled datastore",`
+"vCenter Server Health Alarm",`
+"Virtual machine CPU usage",`
+"VM storage compliance alarm",`
+"VMware Common Logging Service Health Alarm",`
+"VMware System and Hardware Health Manager Service Health Alarm",`
+"VMware vAPI Endpoint Service Health Alarm",`
+"VMware vSphere ESXi Dump Collector Health Alarm",`
+"VMware vSphere Profile-Driven Storage Service Health Alarm",`
+"VMware vSphere Update Manager email alert",`
+"vService Manager Health Alarm",`
+"vSphere Client Health Alarm",`
+"vSphere HA host status",`
+"vSphere HA virtual machine monitoring error"
+#End
+
+#Start High priority alams these will repeat every two hours till resolved!
+$HighPriorityAlarms=`
+"Appliance Management Health Alarm",`
+"Cannot connect to storage",`
+"Data Service Health Alarm",`
+"Datastore capability alarm",`
+"Datastore cluster is out of space",`
+"Datastore usage on disk",`
+"Expired vCenter Server license",`
+"Expired vCenter Server time-limited license",`
+"Host connection and power state",`
+"Host connection failure",`
+"Host error",`
+"Host service console swap rates",`
+"Migration error",`
+"Network connectivity lost",`
+"Network uplink redundancy degraded",`
+"Network uplink redundancy lost",`
+"SRM Consistency Group Violation",`
+"Thin-provisioned volume capacity threshold exceeded",`
+"Virtual machine Consolidation Needed status",`
+"Virtual machine error",`
+"Virtual machine memory usage",`
+"VM MAC Conflict",`
+"VMKernel NIC not configured correctly",`
+"VMware vFabric Postgres Service Health Alarm",`
+"vSphere HA failover in progress",
+"Host Profile Non-Compliant",
+"vSphere HA virtual machine failover failed"
+
+#---Set Alarm Action for Low Priority Alarms---
+
+Foreach ($LowPriorityAlarm in $LowPriorityAlarms) {
+
+    Get-AlarmDefinition -Name "$LowPriorityAlarm" | Get-AlarmAction -ActionType SendEmail| Remove-AlarmAction -Confirm:$false
+
+    Get-AlarmDefinition -Name "$LowPriorityAlarm" | New-AlarmAction -Email -To @($MailtoAddresses)
+
+    Get-AlarmDefinition -Name "$LowPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Green" -EndStatus "Yellow"
+
+    #Get-AlarmDefinition -Name "$LowPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Yellow" -EndStatus "Red"  # This ActionTrigger is enabled by default.
+
+    Get-AlarmDefinition -Name "$LowPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Red" -EndStatus "Yellow"
+
+    Get-AlarmDefinition -Name "$LowPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Yellow" -EndStatus "Green"
+
+}
+
+#---Set Alarm Action for Medium Priority Alarms---
+
+Foreach ($MediumPriorityAlarm in $MediumPriorityAlarms) {
+
+    Get-AlarmDefinition -Name "$MediumPriorityAlarm" | Get-AlarmAction -ActionType SendEmail| Remove-AlarmAction -Confirm:$false
+
+    Set-AlarmDefinition "$MediumPriorityAlarm" -ActionRepeatMinutes (60 * 24) # 24 Hours
+
+    Get-AlarmDefinition -Name "$MediumPriorityAlarm" | New-AlarmAction -Email -To @($MailtoAddresses)
+
+    Get-AlarmDefinition -Name "$MediumPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Green" -EndStatus "Yellow"
+
+    Get-AlarmDefinition -Name "$MediumPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | Get-AlarmActionTrigger | Select -First 1 | Remove-AlarmActionTrigger -Confirm:$false
+
+    Get-AlarmDefinition -Name "$MediumPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Yellow" -EndStatus "Red" -Repeat
+
+    Get-AlarmDefinition -Name "$MediumPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Red" -EndStatus "Yellow"
+
+    Get-AlarmDefinition -Name "$MediumPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Yellow" -EndStatus "Green"
+
+}
+
+#---Set Alarm Action for High Priority Alarms---
+
+Foreach ($HighPriorityAlarm in $HighPriorityAlarms) {
+
+    Get-AlarmDefinition -Name "$HighPriorityAlarm" | Get-AlarmAction -ActionType SendEmail| Remove-AlarmAction -Confirm:$false
+
+    Set-AlarmDefinition "$HighPriorityAlarm" -ActionRepeatMinutes (60 * 2) # 2 hours
+
+    Get-AlarmDefinition -Name "$HighPriorityAlarm" | New-AlarmAction -Email -To @($MailtoAddresses)
+
+    Get-AlarmDefinition -Name "$HighPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Green" -EndStatus "Yellow"
+
+    Get-AlarmDefinition -Name "$HighPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | Get-AlarmActionTrigger | Select -First 1 | Remove-AlarmActionTrigger -Confirm:$false
+
+    Get-AlarmDefinition -Name "$HighPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Yellow" -EndStatus "Red" -Repeat
+
+    Get-AlarmDefinition -Name "$HighPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Red" -EndStatus "Yellow"
+
+    Get-AlarmDefinition -Name "$HighPriorityAlarm" | Get-AlarmAction -ActionType SendEmail | New-AlarmActionTrigger -StartStatus "Yellow" -EndStatus "Green"
+
+}
+
+#---Disconnect from vCenter Server----
