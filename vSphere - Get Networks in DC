@@ -1,0 +1,2 @@
+$DC = Read-host "Enter the DC name for the report & Selection"
+get-datacenter $DC | Get-VM | Get-NetworkAdapter | Select-Object @{N="VM";E={$_.Parent.Name}},@{N="NIC";E={$_.Name}},@{N="Network";E={$_.NetworkName}} | Export-csv $DC-VM-Networks.csv
