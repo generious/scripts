@@ -1,0 +1,37 @@
+# Define source and target vCenter for migration
+$SourceVC = Read-Host -Prompt 'Enter Source vCenter FQDN: '
+$TargetVC = Read-Host -Prompt 'Enter Target vCenter FQDN: '
+
+# Allow multiple vCenter connections
+Set-PowerCLIConfiguration -DefaultVIServerMode multiple -Confirm:$false
+
+# Connect to both vCenter
+connect-viserver -server $SourceVC 
+connect-viserver -server $TargetVC 
+
+# List roles from source vCenter
+# Select role to migrate
+Get-ViRole -server $SourceVC | Format-List Name
+$RoleMigrateQuestion='Do you want to migrate on of the listed vCenter roles? [Y/N]: ' 
+do{
+$response = Read-Host -Prompt $RoleMigrateQuestion
+if ($response -eq 'y') {
+$RoleName = Read-Host -Prompt 'Which role to migrate? [Rolename]: ' 
+
+# Role privileges
+$RolePriv = Get-VIPrivilege -Role $RoleName | %{$_.id}
+
+# Create role in target vCenter
+New-VIRole -name $RoleName -Server $TargetVC
+
+# Copy same privileges to new created role 
+$RolePriv | foreach-object {Set-VIRole -Role $RoleName -AddPrivilege (Get-VIPrivilege -ID $_ -server $TargetVC )} 
+Write-Host 'Migration of Role succeeded!' -ForegroundColor Yellow
+}
+
+# Quit query
+} until ($response -eq 'n')
+Write-Host '---------------------------------------------------------------' -ForegroundColor Yellow
+Write-Host 'Do not forget to define role to object and propagate if needed!' -ForegroundColor Yellow
+Write-Host '---------------------------------------------------------------' -ForegroundColor Yellow
+disconnect-viserver –server $SourceVC, $TargetVC
