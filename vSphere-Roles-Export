@@ -1,0 +1,56 @@
+#vCenter Role & Permission export#
+
+Write-Host "`tExporting Permissions and Roles for vCenter.."
+
+
+$vCenterHost = Read-Host "Enter vCenter Name:"
+
+try {
+
+#Establishing connection to vCenter
+Connect-VIServer -Server $vCenterHost
+
+#Permissions
+$Permission = Get-VIPermission | Select-Object @{N='vCenter';E={$_.Uid.Split('@:')[1]}},
+Principal,Role,propagate,
+@{n='Entity';E={$_.Entity.Name}},
+@{N='Entity Type';E={$_.EntityId.Split('-')[0]}}
+
+#Export to CSV
+$Permission | Export-Csv -Path "C:\Users\Kevin.Mullins\Documents\v2export\$vCenterHost-Permission.csv"
+
+#Export to XML
+$PermissionXML = Get-VIPermission
+$PermissionXML | Export-Clixml -Path "C:\Users\Kevin.Mullins\Documents\v2export\$vCenterHost-Permission.xml"
+
+
+#Roles
+$Role = Get-VIRole | Select-Object @{N='vCenter';E={$_.Uid.Split('@:')[1]}},
+Name,
+@{N='PrivilegeList';E={[string]::Join([char]10,$_.PrivilegeList)}}
+
+
+#Export to CSV
+$Role | Export-Csv -Path "C:\Users\Kevin.Mullins\Documents\v2export\$vCenterHost-Roles.csv"
+
+#Export to XML
+$RoleXML = Get-VIRole
+$RoleXML | Export-Clixml -Path "C:\Users\Kevin.Mullins\Documents\v2export\$vCenterHost-Roles.xml"
+
+Write-Verbose "`tRole & Permission Data Exported Successfully from $vCenterHost" -Verbose
+
+Write-Verbose "Disconnecting from $vCenterHost" -Verbose
+Disconnect-VIServer -Server
+
+}
+
+catch {
+
+Write-Verbose "`tError Encountered! Error:$_" -Verbose
+$ErrorObject = New-Object -TypeName PSObject -Property @{
+vCenterName = $vCenterHost
+Error = $_
+
+}
+
+}
