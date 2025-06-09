@@ -1,0 +1,58 @@
+# Connect to destination vCenter
+$destVC = "destination-vcenter.domain.com"
+Connect-VIServer -Server $destVC
+
+# Input CSV file path
+$importFile = "C:\Temp\vDS_PortGroups_Export.csv"
+
+# Check if the file exists
+if (!(Test-Path -Path $importFile)) {
+    Write-Error "CSV file $importFile not found. Aborting import."
+    Disconnect-VIServer -Server $destVC -Confirm:$false
+    return
+}
+
+# Import CSV data
+$portGroups = Import-Csv -Path $importFile
+
+# Validation: Ensure data is not empty
+if (-not $portGroups) {
+    Write-Error "CSV file is empty or could not be parsed. Aborting import."
+    Disconnect-VIServer -Server $destVC -Confirm:$false
+    return
+}
+
+foreach ($pg in $portGroups) {
+    # Check for required fields
+    if ([string]::IsNullOrWhiteSpace($pg.Name) -or [string]::IsNullOrWhiteSpace($pg.VDSName)) {
+        Write-Warning "Skipping row with missing portgroup or vDS name."
+        continue
+    }
+
+    $vds = Get-VDSwitch -Name $pg.VDSName -ErrorAction SilentlyContinue
+    if ($null -eq $vds) {
+        Write-Warning "vDS '$($pg.VDSName)' not found on $destVC. Skipping portgroup '$($pg.Name)'."
+        continue
+    }
+
+    # Check if portgroup already exists
+    if (Get-VDPortgroup -VDSwitch $vds -Name $pg.Name -ErrorAction SilentlyContinue) {
+        Write-Warning "PortGroup '$($pg.Name)' already exists on vDS '$($pg.VDSName)'. Skipping."
+        continue
+    }
+
+    # Validate VLAN ID
+    if ($pg.VlanId -notmatch '^\d+(-\d+)?(,\d+(-\d+)?)*$') {
+        Write-Warning "Invalid VLAN ID format for portgroup '$($pg.Name)'. Expected single ID or range. Skipping."
+        continue
+    }
+
+    try {
+        New-VDPortgroup -Name $pg.Name -VDSwitch $vds -VlanId $pg.VlanId -PortBinding Static -NumPorts 128
+        Write-Host "✔️ Created PortGroup '$($pg.Name)' with VLAN '$($pg.VlanId)' on '$($pg.VDSName)'"
+    } catch {
+        Write-Warning "❌ Failed to create PortGroup '$($pg.Name)': $_"
+    }
+}
+
+Disconnect-VIServer -Server $destVC -Confirm:$false
