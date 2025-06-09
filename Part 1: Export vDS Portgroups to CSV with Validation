@@ -1,0 +1,38 @@
+# Connect to source vCenter
+$sourceVC = "source-vcenter.domain.com"
+Connect-VIServer -Server $sourceVC
+
+# Set the output file path
+$outputFile = "C:\Temp\vDS_PortGroups_Export.csv"
+
+# Create directory if it doesn't exist
+if (!(Test-Path -Path (Split-Path $outputFile))) {
+    New-Item -Path (Split-Path $outputFile) -ItemType Directory -Force
+}
+
+# Get all distributed portgroups and export relevant details
+$portGroups = Get-VDPortgroup
+if (-not $portGroups) {
+    Write-Error "No distributed portgroups found in vCenter $sourceVC. Aborting export."
+    Disconnect-VIServer -Server $sourceVC -Confirm:$false
+    return
+}
+
+$exportData = $portGroups | Select-Object `
+    @{Name="VDSName"; Expression={$_.VirtualSwitch.Name}},
+    Name,
+    @{Name="VlanId"; Expression={
+        if ($_.VlanConfiguration -is [VMware.VimAutomation.Vds.Types.V1.Vlan.VlanIdRange]) {
+            "$($_.VlanConfiguration.Start)-$($_.VlanConfiguration.End)"
+        } elseif ($_.VlanConfiguration -is [VMware.VimAutomation.Vds.Types.V1.Vlan.TrunkVlanSpec]) {
+            ($_.VlanConfiguration.VlanId | ForEach-Object {"$($_.Start)-$($_.End)"}) -join ","
+        } else {
+            $_.VlanConfiguration.VlanId
+        }
+    }}
+
+# Export to CSV
+$exportData | Export-Csv -Path $outputFile -NoTypeInformation -Encoding UTF8
+Write-Host "Export complete: $outputFile"
+
+Disconnect-VIServer -Server $sourceVC -Confirm:$false
