@@ -2,48 +2,78 @@
 $destVC = "destination-vcenter.domain.com"
 Connect-VIServer -Server $destVC
 
-# Input CSV file path
+# Input CSV file
 $importFile = "C:\Temp\vDS_PortGroups_Export.csv"
 
-# Check if the file exists
+# Validate file exists
 if (!(Test-Path -Path $importFile)) {
     Write-Error "CSV file $importFile not found. Aborting import."
     Disconnect-VIServer -Server $destVC -Confirm:$false
     return
 }
 
-# Import CSV data
+# Import portgroup data
 $portGroups = Import-Csv -Path $importFile
 
-# Validation: Ensure data is not empty
+# Validate content
 if (-not $portGroups) {
-    Write-Error "CSV file is empty or could not be parsed. Aborting import."
+    Write-Error "CSV file is empty or invalid. Aborting."
     Disconnect-VIServer -Server $destVC -Confirm:$false
     return
 }
 
+# Get all hosts in the target vCenter (assumes one cluster or all hosts share networking)
+$allHosts = Get-VMHost
+if (-not $allHosts) {
+    Write-Error "No ESXi hosts found in destination vCenter. Aborting."
+    Disconnect-VIServer -Server $destVC -Confirm:$false
+    return
+}
+
+# Create vDS if missing
+$vdsNames = $portGroups | Select-Object -ExpandProperty VDSName -Unique
+
+foreach ($vdsName in $vdsNames) {
+    $vds = Get-VDSwitch -Name $vdsName -ErrorAction SilentlyContinue
+    if (-not $vds) {
+        Write-Host "🔧 vDS '$vdsName' not found. Creating..."
+
+        try {
+            $newVDS = New-VDSwitch -Name $vdsName -Location (Get-Datacenter | Select-Object -First 1) -Version "8.0.0"
+            Add-VDSwitchPhysicalNetworkAdapter -VDSwitch $newVDS -VMHost $allHosts -Nic (Get-VMHostNetworkAdapter -VMHost $allHosts | Where-Object {$_.DeviceName -like "vmnic*"} | Select-Object -First 1).Name
+            Write-Host "✔️ Created vDS '$vdsName' and added uplinks from first available NIC"
+        } catch {
+            Write-Warning "❌ Failed to create vDS '$vdsName': $_"
+            continue
+        }
+    } else {
+        Write-Host "✅ vDS '$vdsName' already exists"
+    }
+}
+
+# Refresh vDS list after any additions
+$vdsCache = Get-VDSwitch
+
+# Create portgroups
 foreach ($pg in $portGroups) {
-    # Check for required fields
     if ([string]::IsNullOrWhiteSpace($pg.Name) -or [string]::IsNullOrWhiteSpace($pg.VDSName)) {
         Write-Warning "Skipping row with missing portgroup or vDS name."
         continue
     }
 
-    $vds = Get-VDSwitch -Name $pg.VDSName -ErrorAction SilentlyContinue
-    if ($null -eq $vds) {
-        Write-Warning "vDS '$($pg.VDSName)' not found on $destVC. Skipping portgroup '$($pg.Name)'."
+    $vds = $vdsCache | Where-Object { $_.Name -eq $pg.VDSName }
+    if (-not $vds) {
+        Write-Warning "vDS '$($pg.VDSName)' could not be found or created. Skipping portgroup '$($pg.Name)'."
         continue
     }
 
-    # Check if portgroup already exists
     if (Get-VDPortgroup -VDSwitch $vds -Name $pg.Name -ErrorAction SilentlyContinue) {
         Write-Warning "PortGroup '$($pg.Name)' already exists on vDS '$($pg.VDSName)'. Skipping."
         continue
     }
 
-    # Validate VLAN ID
     if ($pg.VlanId -notmatch '^\d+(-\d+)?(,\d+(-\d+)?)*$') {
-        Write-Warning "Invalid VLAN ID format for portgroup '$($pg.Name)'. Expected single ID or range. Skipping."
+        Write-Warning "Invalid VLAN ID format for portgroup '$($pg.Name)'. Skipping."
         continue
     }
 
