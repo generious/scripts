@@ -1,0 +1,39 @@
+#Import modules for PowerCLI
+    Import-Module -Name VMware.VimAutomation.Core
+    Import-Module -Name VMware.VimAutomation.Vds
+ 
+  #Variables to change
+    $standardSwitchName = "vSwitch2"
+    #$dvSwitchName = Read-Host "Enter the dvSwitch Name"
+    $cluster = "SLH_UCS_ESXi_XenApp01"
+    #$vCenter = Read-Host "Enter the vCenter Name"
+    $dvSwitchName = "DSwitch01"
+    $vCenter = "xxxxxxx"
+ 
+    #Connect to vCenter
+    connect-viserver -server $vCenter
+ 
+ 
+  $dvsPGs = Get-VirtualSwitch -Name $dvSwitchName | Get-VirtualPortGroup | Select Name, @{N="VLANId";E={$_.Extensiondata.Config.DefaultPortCOnfig.Vlan.VlanId}}, NumPorts
+ 
+  #Get all ESXi hosts in a cluster
+  $vmhosts = get-cluster -Name $cluster | get-vmhost
+ 
+    #Loop ESXi hosts
+    foreach ($vmhost in $vmhosts)
+    {
+        #Create new VSS
+        $vswitch = New-VirtualSwitch -VMHost $vmhost -Name $standardSwitchName -Confirm:$false
+ 
+        #Look port groups and create
+        foreach ($dvsPG in $dvsPGs)
+        {
+            #Validate the port group is a number the DVUplink returns an array
+            if ($dvsPg.VLANId -is [int] )
+            {
+                New-VirtualPortGroup -Name $dvsPG.Name -VirtualSwitch $vswitch -VlanId $dvsPG.VLANId -Confirm:$false
+            }
+ 
+        }
+ 
+    }
