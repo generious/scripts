@@ -1,0 +1,73 @@
+Write-Host "Connecting to vCenter Server" -foregroundcolor Green
+Connect-VIServer -Server "vCenterServer" -User administrator@vsphere.local -Pass "somepassword" | Out-Null
+ 
+# Individual ESXi host to migrate from vDS to VSS
+$vmhost = "192.168.1.20"
+Write-Host "Host selected: " $vmhost -foregroundcolor Green
+ 
+# Create a new vSS on the host
+$vss_name = New-VirtualSwitch -VMHost $vmhost -Name vSwitch_Migration
+Write-Host "Created new vSS on host" $vmhost "named" "vSwitch_Migration" -foregroundcolor Green
+ 
+#VDS to migrate from
+$vds_name = "MyvDS"
+$vds = Get-VDSwitch -Name $vds_name
+ 
+#Probe the VDS, get port groups and re-create on VSS
+$vds_portgroups = Get-VDPortGroup -VDSwitch $vds_name
+foreach ($vds_portgroup in $vds_portgroups)
+{
+if([string]::IsNullOrEmpty($vds_portgroup.vlanconfiguration.vlanid))
+{
+Write-Host "No VLAN Config for" $vds_portgroup.name "found" -foregroundcolor Green
+$PortgroupName = $vds_portgroup.Name
+New-VirtualPortGroup -virtualSwitch $vss_name -name "VSS_$PortgroupName" | Out-Null
+}
+ 
+else
+ 
+{
+Write-Host "VLAN config present for" $vds_portgroup.name -foregroundcolor Green
+$PortgroupName = $vds_portgroup.Name
+New-VirtualPortGroup -virtualSwitch $vss_name -name "VSS_$PortgroupName" -VLanId $vds_portgroup.vlanconfiguration.vlanid | Out-Null
+}
+}
+ 
+#Create a list of VMKernel adapters
+$management_vmkernel = Get-VMHostNetworkAdapter -VMHost $vmhost -Name "vmk0"
+$vmotion1_vmkernel = Get-VMHostNetworkAdapter -VMHost $vmhost -Name "vmk1"
+$vmotion2_vmkernel = Get-VMHostNetworkAdapter -VMHost $vmhost -Name "vmk2"
+$vmkernel_list = @($management_vmkernel,$vmotion1_vmkernel,$vmotion2_vmkernel)
+ 
+#Create mapping for VMKernel -> vss Port Group
+$management_vmkernel_portgroup = Get-VirtualPortGroup -name "VSS_Mgmt" -Host $vmhost
+$vmotion1_vmkernel_portgroup = Get-VirtualPortGroup -name "VSS_vMotion1" -Host $vmhost
+$vmotion2_vmkernel_portgroup = Get-VirtualPortGroup -name "VSS_vMotion2" -Host $vmhost
+$pg_array = @($management_vmkernel_portgroup,$vmotion1_vmkernel_portgroup,$vmotion2_vmkernel_portgroup)
+ 
+#Move 1 uplink to the vss, also move over vmkernel interfaces
+Write-Host "Moving vmnic0 from the vDS to VSS including vmkernel interfaces" -foregroundcolor Green
+Add-VirtualSwitchPhysicalNetworkAdapter -VMHostPhysicalNic (Get-VMHostNetworkAdapter -Physical -Name "vmnic0" -VMHost $vmhost) -VirtualSwitch $vss_name -VMHostVirtualNic $vmkernel_list -VirtualNicPortgroup $pg_array -Confirm:$false
+ 
+#Moving VM's from vDS to VSS
+$vmlist = Get-VM | Where-Object {$_.VMHost.name -eq $vmhost}
+ 
+foreach ($vm in $vmlist)
+{
+#VM's may have more that one nic
+$vmniclist = Get-NetworkAdapter -vm $vm
+foreach ($vmnic in $vmniclist)
+{
+$newportgroup = "VSS_" + $vmnic.NetworkName
+Write-Host "Changing port group for" $vm.name "from" $vmnic.NetworkName "to " $newportgroup -foregroundcolor Green
+Set-NetworkAdapter -NetworkAdapter $vmnic -NetworkName $newportgroup -Confirm:$false | Out-Null
+}
+}
+ 
+#Moving additional vmnic to vss
+Write-Host "All VM's migrated, adding second vmnic to vss" -foregroundcolor Green
+Add-VirtualSwitchPhysicalNetworkAdapter -VMHostPhysicalNic (Get-VMHostNetworkAdapter -Physical -Name "vmnic1" -VMHost $vmhost) -VirtualSwitch $vss_name -Confirm:$false
+ 
+#Tidyup - Remove DVS from this host
+Write-Host "Removing host from vDS" -foregroundcolor Green
+$vds | Remove-VDSwitchVMHost -VMHost $vmhost -Confirm:$false
