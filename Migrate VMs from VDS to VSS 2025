@@ -1,0 +1,49 @@
+#Import modules for PowerCLI
+    Import-Module -Name VMware.VimAutomation.Core
+    Import-Module -Name VMware.VimAutomation.Vds
+ 
+  #Variables to change
+    $standardSwitchName = "vSwitch2"
+    #$cluster = Read-Host "Enter the cluster name"
+    #$vCenter = Read-Host "Enter the vCenter Name"
+    $cluster = "SLH_UCS_ESXi_VDI02"
+	#$cluster = "SLH_UCS_ESXi_XenApp01"
+	#$cluster = "SLH_UCS_ESXi_VDI01"
+    $vCenter = "LD1NI1863.emeares.local"
+ 
+    #Connect to vCenter
+    connect-viserver -server $vCenter
+
+#Move Virtual machines to new Adapters
+ 
+    $vms = get-cluster -Name $cluster | get-vm 
+ 
+    foreach ($vm in $vms)
+      {
+        #grab the virtual switch for the hosts 
+        $vss = Get-VirtualSwitch -Name $standardswitchname -VMHost $vm.VMHost
+        #check that the virtual switch has at least one physical adapter
+        if ($vss.ExtensionData.Pnic.Count -gt 0)
+        {
+        #VMHost
+        $adapters = $vm | Get-NetworkAdapter 
+ 
+        #Loop through adapters
+        foreach ($adapter in $adapters)
+        {
+            #Get VSS port group of same name returns port group on all hosts
+            $VSSPortGroups = Get-VirtualPortGroup -Name $adapter.NetworkName -VirtualSwitch $standardSwitchName
+   
+            #Loop the hosts
+            foreach ($VSSPortGroup in $VSSPortGroups)
+            {
+                #Search for the PortGroup on our host
+                if ([string]$VSSPortGroup.VMHostId -eq [string]$vm.VMHost.Id)
+                {
+                    #Change network Adapter to standard switch
+                    Set-NetworkAdapter -NetworkAdapter $adapter -Portgroup $VSSPortGroup -Confirm:$false
+                }
+            }
+        }
+        }
+    } 
